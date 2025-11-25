@@ -44,14 +44,14 @@ function StartSolve() {
 			// current_worker.postMessage(["alexanderthomaswellslauraalmagropuente", 0.1]);
 			current_worker.postMessage([cleaned_letters, solve_temperature]);
 			current_worker_stats.is_running = true;
-			current_worker_stats.start_time = BigInt(performance.now());
+			current_worker_stats.start_time = BigInt(Date.now());
 		}
 		else if (evt.data.startsWith('newbest')) {
 			UpdateBestSolution(evt.data);
 		}
 		else if (evt.data == 'done') {
 			current_worker_stats.is_running = false;
-			current_worker_stats.end_time = BigInt(performance.now());
+			current_worker_stats.end_time = BigInt(Date.now());
 			current_worker.terminate();
 			frameRate(5);
 		}
@@ -76,7 +76,7 @@ function UpdateBestSolution(msg_from_worker) {
 
 	// Check if we have a final solution
 	if (current_worker_stats.best_score === 0) {
-		current_worker_stats.end_time = BigInt(performance.now());
+		current_worker_stats.end_time = BigInt(Date.now());
 		current_worker_stats.is_running = false;
 	}
 
@@ -107,12 +107,12 @@ function PrettyPrintTimeTaken() {
 	let time_diff_in_ms;
 
 	if (current_worker_stats.is_running) {
-		time_diff_in_ms = BigInt(performance.now()) - current_worker_stats.start_time;
+		time_diff_in_ms = BigInt(Date.now()) - current_worker_stats.start_time;
 	} else {
 		time_diff_in_ms = current_worker_stats.end_time - current_worker_stats.start_time;
 	}
 
-	// return `(${current_worker_stats.start_time}) (${current_worker_stats.end_time}) (now ${BigInt(performance.now())})`;
+	// return `(${current_worker_stats.start_time}) (${current_worker_stats.end_time}) (now ${BigInt(Date.now())})`;
 
 	let seconds = (time_diff_in_ms / 1000n).toString();
 	let milliseconds = (time_diff_in_ms % 1000n).toString();
