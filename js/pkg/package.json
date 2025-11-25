@@ -1,0 +1,14 @@
+{
+  "name": "banana-wasm",
+  "type": "module",
+  "description": "Bananagrams Solver by Alex Wells",
+  "version": "0.1.0",
+  "files": [
+    "banana_wasm_bg.wasm",
+    "banana_wasm.js"
+  ],
+  "main": "banana_wasm.js",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
