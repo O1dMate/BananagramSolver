@@ -1,0 +1,1 @@
+Solver for the board game Bananagrams written in Rust and compiled for the web.
