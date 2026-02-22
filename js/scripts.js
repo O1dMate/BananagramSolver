@@ -10,6 +10,8 @@ const drawTri = (x1, y1, x2, y2, x3, y3) => triangle(x1, y1, x2, y2, x3, y3);
 
 const NO_CHAR = '.'; // The char that will represent an empty cell in the solution grid
 let temperature = 0.0;
+let start_with_longest_word = false;
+let start_with_specific_word = false;
 let current_worker = null;
 let current_solution_to_draw = []; // Array of strings. Each string is a row in the solution.
 let current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false }
@@ -18,7 +20,6 @@ function StartSolve() {
 	frameRate(60);
 
 	console.log('Starting solve:');
-	console.log(document.getElementById('letters').value);
 
 	// Terminate the current worker if it's still running
 	if (current_worker) { current_worker.terminate(); }
@@ -29,20 +30,26 @@ function StartSolve() {
 	// Handle messages from the worker
 	current_worker.onmessage = (evt) => {
 		if (evt.data == 'isready') {
-			// TODO: Get entered letters
+			// Get entered letters
 			let letters = document.getElementById('letters').value;
+			let required_word_letters = document.getElementById('required_word').value;
+			// Clean entered letters (trim, convert to lowercase, then filter our non lowercase chars to remove symbols etc).
 			let cleaned_letters = letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
+			let required_word = required_word_letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
+			
 			if (cleaned_letters.length <= 0) {
 				current_worker.terminate();
 				return;
 			}
+
+			if (!start_with_specific_word || !required_word || required_word.length < 2) { required_word = ''; }
 
 			let solve_temperature = Math.min(Math.max(temperature, 0.0), 1.0); // Clamp Temperature between 0.0 - 1.0
 			solve_temperature = solve_temperature*0.5; // Reduce the Temperature to a max of 0.5, since 1 temperature of 1.0 will skip everything.
 
 			// current_worker.postMessage(["abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 0.0]);
 			// current_worker.postMessage(["alexanderthomaswellslauraalmagropuente", 0.1]);
-			current_worker.postMessage([cleaned_letters, solve_temperature]);
+			current_worker.postMessage([cleaned_letters, solve_temperature, start_with_longest_word, required_word]);
 			current_worker_stats.is_running = true;
 			current_worker_stats.start_time = BigInt(Date.now());
 		}
@@ -61,6 +68,24 @@ function StartSolve() {
 function HandleTemperatureChange() {
 	temperature = parseFloat(document.getElementById('temperature').value);
 	UpdateTempValueInUi();
+}
+
+function HandleStartWithLongestWord() {
+	start_with_longest_word = !!document.getElementById('start_with_longest_word').checked;
+
+	if (start_with_longest_word) {
+		start_with_specific_word = false;
+		document.getElementById('start_with_specific_word').checked = false;
+	}
+}
+
+function HandleStartWithSpecificWord() {
+	start_with_specific_word = !!document.getElementById('start_with_specific_word').checked;
+
+	if (start_with_specific_word) {
+		start_with_longest_word = false;
+		document.getElementById('start_with_longest_word').checked = false;
+	}
 }
 
 function UpdateTempValueInUi() {
@@ -89,10 +114,19 @@ function setup() {
 	SCREEN_WIDTH = window.innerWidth - 40;
 	SCREEN_HEIGHT = window.innerHeight - 100;
 
+	// Get currently set values in the UI as the starting values
 	temperature = parseFloat(document.getElementById('temperature').value);
+	start_with_longest_word = document.getElementById('start_with_longest_word').checked;
+	start_with_specific_word = document.getElementById('start_with_specific_word').checked;
+	
+	if (start_with_specific_word) {
+		start_with_longest_word = false;
+	}
+
 	UpdateTempValueInUi();
 
 	createCanvas(window.innerWidth-40, window.innerHeight-100);
+	frameRate(5);
 }
 
 function windowResized() {

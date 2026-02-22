@@ -86,12 +86,16 @@ function passStringToWasm0(arg, malloc, realloc) {
 /**
  * @param {string} provided_letters
  * @param {number} temperature
+ * @param {boolean} biggest_word_first
+ * @param {string} required_word
  * @returns {boolean}
  */
-export function solve(provided_letters, temperature) {
+export function solve(provided_letters, temperature, biggest_word_first, required_word) {
     const ptr0 = passStringToWasm0(provided_letters, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.solve(ptr0, len0, temperature);
+    const ptr1 = passStringToWasm0(required_word, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.solve(ptr0, len0, temperature, biggest_word_first, ptr1, len1);
     return ret !== 0;
 }
 
