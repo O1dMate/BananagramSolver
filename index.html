@@ -22,6 +22,12 @@
 				font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
 				white-space: pre-wrap;
 			}
+			.label-small {
+				color: #bfbfbf;
+				font-size: 16;
+				font-family: SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+				white-space: pre-wrap;
+			}
 
 			.textArea {
 				width: 100%;
@@ -185,7 +191,15 @@
 				</div>
 			</label>
 
+			<label class="checkbox_container" onclick="HandleDeepSearch()">
+				<label class="label">Use Deep Search</label>
+				<label class="label-small">(this is only recommended for small letter lists when normal search is failing)</label>
+				<input type="checkbox" id="use_deep_search">
+				<span class="checkmark"></span>
+			</label>
+
 			<button type="button" class="cursor-pointer buttonStyle" onclick="StartSolve()">Solve</button> 
+			<button type="button" class="cursor-pointer buttonStyle" onclick="CancelSolve()">Stop</button> 
 		</div>
 	</body>
 </html>

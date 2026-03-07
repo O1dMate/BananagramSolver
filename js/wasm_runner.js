@@ -11,6 +11,7 @@ self.send_result = function(msg) {
 		return;
 	}
 
+	// Forward the message to the Worker callback/handler function
 	postMessage(msg);
 }
 
@@ -32,12 +33,14 @@ onmessage = async (evt) => {
 		return;
 	}
 
-	let letters = evt.data[0] || '';
-	let temperature = evt.data[1] || 0.0;
-	let longest_word_first = evt.data[2] ?? false;
-	let required_word = evt.data[3] || '';
+	const letters = evt.data[0] || '';
+	const temperature = evt.data[1] || 0.0;
+	const longest_word_first = evt.data[2] ?? false;
+	const required_word = evt.data[3] || '';
+	const deep_search_mode = evt.data[4] ?? false;
+	const worker_id = evt.data[5] ?? 0;
 
-	console.log('Starting solve with:', {letters, temperature, longest_word_first, required_word});
-	let _ = solve(letters, temperature, longest_word_first, required_word);
+	console.log('Starting solve with:', {letters, temperature, longest_word_first, required_word, deep_search_mode, worker_id});
+	const _ = solve(letters, temperature, longest_word_first, required_word, deep_search_mode, worker_id);
 	postMessage('done');
 }

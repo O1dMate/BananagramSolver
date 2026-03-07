@@ -12,56 +12,104 @@ const NO_CHAR = '.'; // The char that will represent an empty cell in the soluti
 let temperature = 0.0;
 let start_with_longest_word = false;
 let start_with_specific_word = false;
-let current_worker = null;
-let current_solution_to_draw = []; // Array of strings. Each string is a row in the solution.
-let current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false }
+let deep_search_mode = false;
+let current_solution_to_draw = []; // Array of strings. Each string is a row in the solution grid.
+let current_solution_known_lowest_score = 0; // The lowest score the solver believes is possible given the letters.
+let current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false };
+const worker_count = (() => { try { const core_count = navigator.hardwareConcurrency ?? 1; return core_count;} catch (_) { return 1; } })();
+const worker_list = (new Array(worker_count)).fill(null);
 
 function StartSolve() {
 	frameRate(60);
 
 	console.log('Starting solve:');
 
-	// Terminate the current worker if it's still running
-	if (current_worker) { current_worker.terminate(); }
+	// Terminate any running workers if they're still running
+	TerminateAllWorkers();
+	current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false };
 
-	// Start a new worker for this job
-	current_worker = new Worker("js/wasm_runner.js", {type:"module"});
+	// Create new workers for this job
+	for (let i = 0; i < worker_count; ++i) { worker_list[i] = new Worker("js/wasm_runner.js", {type:"module"}) }
+
+	// console.log('here', worker_list);
+
+	current_worker_stats.is_running = true;
+	current_worker_stats.start_time = BigInt(Date.now());
+	current_solution_known_lowest_score = 0;
 
 	// Handle messages from the worker
-	current_worker.onmessage = (evt) => {
-		if (evt.data == 'isready') {
-			// Get entered letters
-			let letters = document.getElementById('letters').value;
-			let required_word_letters = document.getElementById('required_word').value;
-			// Clean entered letters (trim, convert to lowercase, then filter our non lowercase chars to remove symbols etc).
-			let cleaned_letters = letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
-			let required_word = required_word_letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
-			
-			if (cleaned_letters.length <= 0) {
-				current_worker.terminate();
-				return;
+	for (let worker_id = 0; worker_id < worker_count; ++worker_id) {
+		worker_list[worker_id].onmessage = (evt) => {
+			// console.log('worker', i, 'event');
+
+			if (evt.data == 'isready') {
+				// Get entered letters
+				let letters = document.getElementById('letters').value;
+				let required_word_letters = document.getElementById('required_word').value;
+				// Clean entered letters (trim, convert to lowercase, then filter our non-lowercase chars to remove symbols, digits etc).
+				let cleaned_letters = letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
+				let required_word = required_word_letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
+				
+				// If there are no letters, kill this worker.
+				// This will happen on all workers, so we don't need to kill all others here.
+				if (cleaned_letters.length <= 0) {
+					worker_list[worker_id].terminate();
+					worker_list[worker_id] = null;
+
+					current_worker_stats.start_time = 0n;
+					current_worker_stats.is_running = false;
+					current_solution_known_lowest_score = 0;
+					return;
+				}
+
+				if (!start_with_specific_word || !required_word || required_word.length < 2) { required_word = ''; }
+
+				let solve_temperature = Math.min(Math.max(temperature, 0.0), 1.0); // Clamp Temperature between 0.0 - 1.0
+				solve_temperature = solve_temperature*0.5; // Reduce the Temperature to a max of 0.5, since 1 temperature of 1.0 will skip everything.
+
+				// TODO: Split up the work here.
+
+				// current_worker.postMessage(["abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 0.0]);
+				// current_worker.postMessage(["alexanderthomaswellslauraalmagropuente", 0.1]);
+				worker_list[worker_id].postMessage([cleaned_letters, solve_temperature, start_with_longest_word, required_word, deep_search_mode, worker_id]);
 			}
+			else if (evt.data.startsWith('newbest')) {
+				UpdateBestSolution(evt.data);
+			}
+			else if (evt.data.startsWith('update_lower_bound_score')) {
+				// All workers will call this, but that doesn't matter since they'll all calculate the same value.
+				current_solution_known_lowest_score = parseInt(evt.data.split(',')[1]);
+			}
+			else if (evt.data == 'done') {
+				// If this worker completes, we should only cancel it and not any other workers.
+				worker_list[worker_id].terminate();
+				worker_list[worker_id] = null;
 
-			if (!start_with_specific_word || !required_word || required_word.length < 2) { required_word = ''; }
+				// We won't mark the search as finished unless all other workers are done.
+				if (worker_list.every(worker => worker === null)) {
+					current_worker_stats.is_running = false;
+					current_worker_stats.end_time = BigInt(Date.now());
+					frameRate(5);
+				}
+				console.log(`Worker ${worker_id} done`);
+			}
+		}
+	}
+}
 
-			let solve_temperature = Math.min(Math.max(temperature, 0.0), 1.0); // Clamp Temperature between 0.0 - 1.0
-			solve_temperature = solve_temperature*0.5; // Reduce the Temperature to a max of 0.5, since 1 temperature of 1.0 will skip everything.
+function TerminateAllWorkers() {
+	// Terminate any running workers if they're still running
+	for (let i = 0; i < worker_count; ++i) {
+		if (worker_list[i]) worker_list[i].terminate();
+	}
+}
 
-			// current_worker.postMessage(["abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 0.0]);
-			// current_worker.postMessage(["alexanderthomaswellslauraalmagropuente", 0.1]);
-			current_worker.postMessage([cleaned_letters, solve_temperature, start_with_longest_word, required_word]);
-			current_worker_stats.is_running = true;
-			current_worker_stats.start_time = BigInt(Date.now());
-		}
-		else if (evt.data.startsWith('newbest')) {
-			UpdateBestSolution(evt.data);
-		}
-		else if (evt.data == 'done') {
-			current_worker_stats.is_running = false;
-			current_worker_stats.end_time = BigInt(Date.now());
-			current_worker.terminate();
-			frameRate(5);
-		}
+function CancelSolve() {
+	TerminateAllWorkers();
+
+	if (current_worker_stats.is_running) {
+		current_worker_stats.is_running = false;
+		current_worker_stats.end_time = BigInt(Date.now());
 	}
 }
 
@@ -88,6 +136,10 @@ function HandleStartWithSpecificWord() {
 	}
 }
 
+function HandleDeepSearch() {
+	deep_search_mode = !!document.getElementById('use_deep_search').checked;
+}
+
 function UpdateTempValueInUi() {
 	document.getElementById('temperature_value').innerText = (Math.round(temperature * 1000)/1000).toString();
 }
@@ -96,17 +148,23 @@ function UpdateBestSolution(msg_from_worker) {
 	let pieces = msg_from_worker.split(',');
 	// console.log("[+] New Best", pieces[1]);
 
-	// Update the best score found
-	current_worker_stats.best_score = parseInt(pieces[1]);
+	const new_best_score_from_worker = parseInt(pieces[1]);
 
-	// Check if we have a final solution
-	if (current_worker_stats.best_score === 0) {
-		current_worker_stats.end_time = BigInt(Date.now());
-		current_worker_stats.is_running = false;
+	// Update the best score found
+	if (new_best_score_from_worker < current_worker_stats.best_score) {
+		current_worker_stats.best_score = new_best_score_from_worker;
+
+		// Update the current best solution
+		current_solution_to_draw = pieces[2].toUpperCase().split('\n');
 	}
 
-	// Update the current best solution
-	current_solution_to_draw = pieces[2].toUpperCase().split('\n');
+	// Check if we have a final solution
+	if (current_worker_stats.best_score <= current_solution_known_lowest_score) {
+		current_worker_stats.end_time = BigInt(Date.now());
+		current_worker_stats.is_running = false;
+
+		TerminateAllWorkers();
+	}
 }
 
 // Initial Setup
@@ -118,6 +176,7 @@ function setup() {
 	temperature = parseFloat(document.getElementById('temperature').value);
 	start_with_longest_word = document.getElementById('start_with_longest_word').checked;
 	start_with_specific_word = document.getElementById('start_with_specific_word').checked;
+	deep_search_mode = document.getElementById('use_deep_search').checked;
 	
 	if (start_with_specific_word) {
 		start_with_longest_word = false;
@@ -146,12 +205,18 @@ function PrettyPrintTimeTaken() {
 		time_diff_in_ms = current_worker_stats.end_time - current_worker_stats.start_time;
 	}
 
-	// return `(${current_worker_stats.start_time}) (${current_worker_stats.end_time}) (now ${BigInt(Date.now())})`;
+	const seconds = (time_diff_in_ms / 1000n).toString();
+	const milliseconds = (time_diff_in_ms % 1000n).toString();
 
-	let seconds = (time_diff_in_ms / 1000n).toString();
-	let milliseconds = (time_diff_in_ms % 1000n).toString();
+	// Under 1 second
+	if (seconds <= 0) {
+		return `${milliseconds}ms`;
+	}
+	// Over 1 second
+	else {
+		return `${seconds}.${milliseconds.padStart(3,'0')}s`;
+	}
 
-	return `${seconds}.${milliseconds.padStart(3,'0')}`;
 }
 
 // To be called each frame
@@ -185,11 +250,15 @@ function draw() {
 	if (current_worker_stats.start_time === 0n) {
 		solve_stats_text = "Enter letters and click 'Solve' to begin";
 	} else if (current_worker_stats.is_running) {
-		solve_stats_text = `${current_worker_stats.best_score} character(s) remaining. Time taken: ${PrettyPrintTimeTaken()}s`;
-	} else if (!current_worker_stats.is_running && current_worker_stats.best_score == 0) {
-		solve_stats_text = `Solved in ${PrettyPrintTimeTaken()}s.`;
-	} else if (!current_worker_stats.is_running && current_worker_stats.best_score != 0) {
-		solve_stats_text = `Failed to solve, ${current_worker_stats.best_score} character(s) remaining. Time taken: ${PrettyPrintTimeTaken()}s.`;
+		solve_stats_text = `${current_worker_stats.best_score} character(s) remaining. Time taken: ${PrettyPrintTimeTaken()}`;
+	} else if (!current_worker_stats.is_running && current_worker_stats.best_score == current_solution_known_lowest_score) {
+		if (current_worker_stats.best_score === 0) {
+			solve_stats_text = `Solved in ${PrettyPrintTimeTaken()}`;
+		} else {
+			solve_stats_text = `Solved in ${PrettyPrintTimeTaken()} with ${current_solution_known_lowest_score} unusable character(s) leftover`;
+		}
+	} else if (!current_worker_stats.is_running && current_worker_stats.best_score > current_solution_known_lowest_score) {
+		solve_stats_text = `Failed to solve, ${current_worker_stats.best_score} character(s) remaining. Time taken: ${PrettyPrintTimeTaken()}`;
 	}
 
 	textSize(18);
