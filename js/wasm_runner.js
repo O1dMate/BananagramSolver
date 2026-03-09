@@ -6,7 +6,7 @@ self.is_ready = false;
 self.send_result = function(msg) {
 	// console.log("WASM msg:", msg);
 
-	if (msg.startsWith('log:')) {
+	if (msg.startsWith('log|')) {
 		console.log(msg.slice(4));
 		return;
 	}

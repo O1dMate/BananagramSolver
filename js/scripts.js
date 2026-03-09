@@ -15,7 +15,7 @@ let start_with_specific_word = false;
 let deep_search_mode = false;
 let current_solution_to_draw = []; // Array of strings. Each string is a row in the solution grid.
 let current_solution_known_lowest_score = 0; // The lowest score the solver believes is possible given the letters.
-let current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false };
+let current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false, unused_letters: '' };
 const worker_count = (() => { try { const core_count = navigator.hardwareConcurrency ?? 1; return core_count;} catch (_) { return 1; } })();
 const worker_list = (new Array(worker_count)).fill(null);
 
@@ -34,7 +34,7 @@ function StartSolve() {
 	// Reset search statistics
 	current_solution_to_draw = [];
 	current_solution_known_lowest_score = 0;
-	current_worker_stats = { letters: '', best_score: cleaned_letters.length, start_time: 0n, end_time: 0n, is_running: false };
+	current_worker_stats = { letters: '', best_score: cleaned_letters.length, start_time: 0n, end_time: 0n, is_running: false, unused_letters: '' };
 
 	// If there are no letters, don't proceed with the solve
 	if (cleaned_letters.length <= 1) {
@@ -69,7 +69,7 @@ function StartSolve() {
 			}
 			else if (evt.data.startsWith('update_lower_bound_score')) {
 				// All workers will call this, but that doesn't matter since they'll all calculate the same value.
-				current_solution_known_lowest_score = parseInt(evt.data.split(',')[1]);
+				current_solution_known_lowest_score = parseInt(evt.data.split('|')[1]);
 			}
 			else if (evt.data == 'done') {
 				// If this worker completes, we should only cancel it and not any other workers.
@@ -82,6 +82,7 @@ function StartSolve() {
 					current_worker_stats.end_time = BigInt(Date.now());
 					frameRate(5);
 				}
+
 				console.log(`Worker ${worker_id} done`);
 			}
 		}
@@ -138,14 +139,18 @@ function UpdateTempValueInUi() {
 }
 
 function UpdateBestSolution(msg_from_worker) {
-	let pieces = msg_from_worker.split(',');
+	let pieces = msg_from_worker.split('|');
 	// console.log("[+] New Best", pieces[1]);
 
 	const new_best_score_from_worker = parseInt(pieces[1]);
 
+
 	// Update the best score found
 	if (new_best_score_from_worker < current_worker_stats.best_score) {
 		current_worker_stats.best_score = new_best_score_from_worker;
+
+		// Update which letters are left over / haven't been used yet
+		current_worker_stats.unused_letters = pieces[3].slice(1, pieces[3].length-1).replaceAll(`'`, ``).replaceAll(`(`, `[ `).replaceAll(`)`, ` ]`).replaceAll(`], [`, `]  [`).toUpperCase();
 
 		// Update the current best solution
 		current_solution_to_draw = pieces[2].toUpperCase().split('\n');
@@ -256,7 +261,7 @@ function draw() {
 	if (current_worker_stats.start_time === 0n) {
 		solve_stats_text = "Enter letters and click 'Solve' to begin";
 	} else if (current_worker_stats.is_running) {
-		solve_stats_text = `${current_worker_stats.best_score} character(s) remaining. Time taken: ${PrettyPrintTimeTaken()}`;
+		solve_stats_text = `${current_worker_stats.best_score} character(s) remaining, Time taken: ${PrettyPrintTimeTaken()}`;
 	} else if (!current_worker_stats.is_running && current_worker_stats.best_score == current_solution_known_lowest_score) {
 		if (current_worker_stats.best_score === 0) {
 			solve_stats_text = `Solved in ${PrettyPrintTimeTaken()}`;
@@ -264,7 +269,7 @@ function draw() {
 			solve_stats_text = `Solved in ${PrettyPrintTimeTaken()} with ${current_solution_known_lowest_score} unusable character(s) leftover`;
 		}
 	} else if (!current_worker_stats.is_running && current_worker_stats.best_score > current_solution_known_lowest_score) {
-		solve_stats_text = `Failed to solve, ${current_worker_stats.best_score} character(s) remaining. Time taken: ${PrettyPrintTimeTaken()}`;
+		solve_stats_text = `Failed to solve in ${PrettyPrintTimeTaken()}, ${current_worker_stats.best_score} character(s) remaining`;
 	}
 
 	textSize(18);
@@ -300,5 +305,13 @@ function draw() {
 				text(char_to_draw, offset_x + x*cell_size + cell_size/2, offset_y + y*cell_size + cell_size/2);
 			}
 		}
+	}
+
+	if (current_worker_stats.unused_letters.length > 0) {
+		textSize(18);
+		textAlign(LEFT, CENTER);
+		fill(230);
+		noStroke();
+		text(`Unused letters: ${current_worker_stats.unused_letters}`, 30, offset_y + offset_y + cell_size*current_solution_to_draw.length - cell_size/2);
 	}
 }
