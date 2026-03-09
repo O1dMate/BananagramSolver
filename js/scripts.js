@@ -20,13 +20,29 @@ const worker_count = (() => { try { const core_count = navigator.hardwareConcurr
 const worker_list = (new Array(worker_count)).fill(null);
 
 function StartSolve() {
-	frameRate(60);
-
-	console.log('Starting solve:');
-
 	// Terminate any running workers if they're still running
 	TerminateAllWorkers();
-	current_worker_stats = { letters: '', best_score: 1_000_000, start_time: 0n, end_time: 0n, is_running: false };
+
+	// Get entered letters
+	let letters = document.getElementById('letters').value;
+	let required_word_letters = document.getElementById('required_word').value;
+
+	// Clean entered letters (trim, convert to lowercase, then filter our non-lowercase chars to remove symbols, digits etc).
+	let cleaned_letters = letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
+	let required_word = required_word_letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
+
+	// Reset search statistics
+	current_solution_to_draw = [];
+	current_solution_known_lowest_score = 0;
+	current_worker_stats = { letters: '', best_score: cleaned_letters.length, start_time: 0n, end_time: 0n, is_running: false };
+
+	// If there are no letters, don't proceed with the solve
+	if (cleaned_letters.length <= 1) {
+		return;
+	}
+
+	frameRate(60);
+	console.log('Starting solve:');
 
 	// Create new workers for this job
 	for (let i = 0; i < worker_count; ++i) { worker_list[i] = new Worker("js/wasm_runner.js", {type:"module"}) }
@@ -35,42 +51,17 @@ function StartSolve() {
 
 	current_worker_stats.is_running = true;
 	current_worker_stats.start_time = BigInt(Date.now());
-	current_solution_known_lowest_score = 0;
 
 	// Handle messages from the worker
 	for (let worker_id = 0; worker_id < worker_count; ++worker_id) {
 		worker_list[worker_id].onmessage = (evt) => {
-			// console.log('worker', i, 'event');
-
 			if (evt.data == 'isready') {
-				// Get entered letters
-				let letters = document.getElementById('letters').value;
-				let required_word_letters = document.getElementById('required_word').value;
-				// Clean entered letters (trim, convert to lowercase, then filter our non-lowercase chars to remove symbols, digits etc).
-				let cleaned_letters = letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
-				let required_word = required_word_letters.trim().toLowerCase().split('').filter(char => char.charCodeAt(0) >= 97 && char.charCodeAt(0) <= 122).join('');
-				
-				// If there are no letters, kill this worker.
-				// This will happen on all workers, so we don't need to kill all others here.
-				if (cleaned_letters.length <= 0) {
-					worker_list[worker_id].terminate();
-					worker_list[worker_id] = null;
-
-					current_worker_stats.start_time = 0n;
-					current_worker_stats.is_running = false;
-					current_solution_known_lowest_score = 0;
-					return;
-				}
-
+				// Check pre-conditions for the Required Word
 				if (!start_with_specific_word || !required_word || required_word.length < 2) { required_word = ''; }
 
 				let solve_temperature = Math.min(Math.max(temperature, 0.0), 1.0); // Clamp Temperature between 0.0 - 1.0
 				solve_temperature = solve_temperature*0.5; // Reduce the Temperature to a max of 0.5, since 1 temperature of 1.0 will skip everything.
 
-				// TODO: Split up the work here.
-
-				// current_worker.postMessage(["abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz", 0.0]);
-				// current_worker.postMessage(["alexanderthomaswellslauraalmagropuente", 0.1]);
 				worker_list[worker_id].postMessage([cleaned_letters, solve_temperature, start_with_longest_word, required_word, deep_search_mode, worker_id]);
 			}
 			else if (evt.data.startsWith('newbest')) {
@@ -111,6 +102,8 @@ function CancelSolve() {
 		current_worker_stats.is_running = false;
 		current_worker_stats.end_time = BigInt(Date.now());
 	}
+
+	frameRate(5);
 }
 
 function HandleTemperatureChange() {
