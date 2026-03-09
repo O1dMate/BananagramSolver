@@ -184,6 +184,19 @@ function setup() {
 
 	UpdateTempValueInUi();
 
+	// Load the files required for the worker. This is so the files are already loaded when we start a solve, meaning we can start immediately.
+	const load_worker_files = new Worker("js/wasm_runner.js", {type:"module"});
+	load_worker_files.onmessage = (evt) => {
+		if (evt.data == 'isready') {
+			console.log('load_worker_files, isready');
+			load_worker_files.postMessage(['', 0.0, false, '', false, 0]);
+		}
+		else if (evt.data == 'done') {
+			console.log('load_worker_files, done');
+			load_worker_files.terminate();
+		}
+	};
+
 	createCanvas(window.innerWidth-40, window.innerHeight-100);
 	frameRate(5);
 }
@@ -221,7 +234,7 @@ function PrettyPrintTimeTaken() {
 
 // To be called each frame
 function draw() {
-	// TODO: Calculate this properly based on screen size and amount of letters
+	// TODO: Ideally calculate this properly based on screen size and amount of letters
 	let cell_size = 50;
 	let offset_x = 30;
 	let offset_y = 60;
@@ -270,19 +283,25 @@ function draw() {
 	textSize(32);
 	textAlign(CENTER, CENTER);
 
+	// Draw the solution (Grid + Letters)
 	for (let y = 0; y < current_solution_to_draw.length; ++y) {
 		for (let x = 0; x < current_solution_to_draw[y].length; ++x) {
-			let char_to_draw = current_solution_to_draw[y][x];
+			const char_to_draw = current_solution_to_draw[y][x];
 
 			if (char_to_draw == NO_CHAR) {
 				fill(30,30,30);
+
+				// Draw the Grid Cell
 				stroke(255,255,255);
 				drawRect(offset_x + x*cell_size + cell_size/2, offset_y + y*cell_size + cell_size/2, cell_size, cell_size);
 			} else {
 				fill(30,200,30);
+
+				// Draw the Grid Cell
 				stroke(255,255,255);
 				drawRect(offset_x + x*cell_size + cell_size/2, offset_y + y*cell_size + cell_size/2, cell_size, cell_size);
 
+				// Draw the Letter in the Grid Cell
 				fill(0,0,0);
 				stroke(0,0,0);
 				text(char_to_draw, offset_x + x*cell_size + cell_size/2, offset_y + y*cell_size + cell_size/2);
